@@ -11,13 +11,17 @@
 
 // Keep in step with the version in manifest.json. Logged on load so you can
 // confirm which build the browser is actually running.
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.5.0";
 
 const SAMPLE_RATE = 16000; // Voice-grade mono: small payloads, plays everywhere.
 const VOLUME_SET = 4; // MediaPlayerEntityFeature.VOLUME_SET
 const MIN_SECONDS = 0.2; // Below this it was a mis-tap, not a message.
+const VOLUME_DEADZONE = 10; // px of slop before a hold counts as a volume drag.
+const VOLUME_THROTTLE_MS = 120;
 
 const DEFAULTS = {
+  label: "Hold to talk",
+  recording_label: "Release to send",
   chime: true,
   volume_control: true,
   max_seconds: 30,
@@ -27,12 +31,22 @@ const DEFAULTS = {
 /** Options that accept a template. `layout` is excluded on purpose: it decides
  *  the DOM structure, and having it change under a live recording is worse than
  *  the flexibility is worth. */
-const TEMPLATABLE = ["title", "entities", "chime", "volume_control", "max_seconds"];
+const TEMPLATABLE = [
+  "title",
+  "entities",
+  "label",
+  "recording_label",
+  "chime",
+  "volume_control",
+  "max_seconds",
+];
 
 const LABELS = {
   title: "Title",
   entities: "Speakers this card broadcasts to",
   names: "Custom speaker labels, keyed by entity id (templates allowed)",
+  label: "Button text",
+  recording_label: "Button text while recording",
   layout: "Layout",
   chime: "Play a chime before your voice",
   volume_control: "Show volume control",
@@ -189,6 +203,7 @@ class VoiceBroadcastCard extends HTMLElement {
     this._recording = false;
     this._sending = false;
     this._dragging = false;
+    this._volumeDrag = null;
     this._rendered = {};
     this._unsubscribers = [];
     this._generation = 0;
@@ -300,6 +315,13 @@ class VoiceBroadcastCard extends HTMLElement {
     return toEntityList(this._value("entities", this._config.entities ?? []));
   }
 
+  _buttonLabel() {
+    const key = this._recording ? "recording_label" : "label";
+    const label = this._value(key, this._config[key]);
+    // An empty render would leave an unlabelled button, so fall back.
+    return label == null || label === "" ? DEFAULTS[key] : String(label);
+  }
+
   _title() {
     const title = this._value("title", this._config.title);
     return title == null ? "" : String(title);
@@ -362,6 +384,7 @@ class VoiceBroadcastCard extends HTMLElement {
       .row span { flex: 0 0 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       input[type="range"] { flex: 1; min-width: 0; accent-color: var(--primary-color); }
       .ptt {
+        position: relative; overflow: hidden;
         font: inherit; font-size: 17px; font-weight: 500; cursor: pointer;
         padding: 22px; border: none; border-radius: 12px; touch-action: none;
         user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
@@ -371,10 +394,19 @@ class VoiceBroadcastCard extends HTMLElement {
       .ptt.minimal { flex: 1; padding: 14px; font-size: 15px; border-radius: 24px; }
       .ptt:disabled { opacity: 0.5; cursor: default; }
       .ptt[data-recording="true"] { background: var(--error-color, #db4437); transform: scale(0.99); }
+      /* The volume level, shown as a fill behind the label so the minimal
+         layout needs no separate slider. */
+      .ptt .fill {
+        position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+        background: rgba(255, 255, 255, 0.22); transition: width 60ms linear;
+        pointer-events: none;
+      }
+      .ptt[data-adjusting="true"] .fill { background: rgba(255, 255, 255, 0.42); transition: none; }
+      /* Explicit stacking so the label always sits above the fill. */
+      .ptt .label { position: relative; z-index: 1; }
       .status { min-height: 18px; font-size: 13px; color: var(--secondary-text-color); }
       .status[data-error="true"] { color: var(--error-color, #db4437); }
       .content.minimal .status { display: none; }
-      .mini-volume { flex: 0 0 35%; }
     `;
 
     const card = document.createElement("ha-card");
@@ -385,8 +417,9 @@ class VoiceBroadcastCard extends HTMLElement {
       ? `
         <div class="content minimal">
           <div class="warn" hidden></div>
-          <button class="ptt minimal" type="button">Hold to talk</button>
-          <input class="mini-volume" type="range" min="0" max="100" hidden />
+          <button class="ptt minimal" type="button">
+            <span class="fill"></span><span class="label"></span>
+          </button>
           <div class="status"></div>
         </div>
       `
@@ -394,7 +427,9 @@ class VoiceBroadcastCard extends HTMLElement {
         <div class="content">
           <div class="warn" hidden></div>
           <div class="rows"></div>
-          <button class="ptt" type="button">Hold to talk</button>
+          <button class="ptt" type="button">
+            <span class="fill"></span><span class="label"></span>
+          </button>
           <div class="status"></div>
         </div>
       `;
@@ -405,25 +440,25 @@ class VoiceBroadcastCard extends HTMLElement {
     this._rows = card.querySelector(".rows");
     this._button = card.querySelector(".ptt");
     this._statusEl = card.querySelector(".status");
-    this._miniVolume = card.querySelector(".mini-volume");
+    this._buttonText = card.querySelector(".ptt .label");
+    this._buttonFill = card.querySelector(".ptt .fill");
 
     this._button.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
       this._button.setPointerCapture(ev.pointerId);
+      this._beginVolumeDrag(ev);
       this._start();
     });
-    this._button.addEventListener("pointerup", () => this._stop());
-    this._button.addEventListener("pointercancel", () => this._stop());
+    this._button.addEventListener("pointermove", (ev) => this._onVolumeDrag(ev));
+    this._button.addEventListener("pointerup", () => {
+      this._endVolumeDrag();
+      this._stop();
+    });
+    this._button.addEventListener("pointercancel", () => {
+      this._endVolumeDrag();
+      this._stop();
+    });
     this._button.addEventListener("contextmenu", (ev) => ev.preventDefault());
-
-    if (this._miniVolume) {
-      this._miniVolume.addEventListener("pointerdown", () => (this._dragging = true));
-      this._miniVolume.addEventListener("pointerup", () => (this._dragging = false));
-      this._miniVolume.addEventListener("change", () => {
-        this._dragging = false;
-        this._setVolume(this._volumeTargets(), Number(this._miniVolume.value) / 100);
-      });
-    }
 
     this._subscribeTemplates();
   }
@@ -436,6 +471,8 @@ class VoiceBroadcastCard extends HTMLElement {
     const title = this._title();
     if (title) this._root.setAttribute("header", title);
     else this._root.removeAttribute("header");
+
+    if (!this._recording) this._buttonText.textContent = this._buttonLabel();
 
     if (this._rows) {
       for (const row of this._rows.children) {
@@ -451,13 +488,12 @@ class VoiceBroadcastCard extends HTMLElement {
       }
     }
 
-    if (this._miniVolume) {
-      const targets = this._volumeTargets();
-      this._miniVolume.hidden = !this._volumeEnabled() || targets.length === 0;
-      const average = this._averageVolume(targets);
-      if (!this._dragging && average != null) {
-        this._miniVolume.value = String(Math.round(average * 100));
-      }
+    // In the minimal layout the button doubles as the volume indicator.
+    if (this._minimal && !this._volumeDrag) {
+      const average = this._volumeEnabled()
+        ? this._averageVolume(this._volumeTargets())
+        : null;
+      this._setFill(average);
     }
   }
 
@@ -538,6 +574,65 @@ class VoiceBroadcastCard extends HTMLElement {
     });
   }
 
+  /** Paint the volume fill behind the button label. */
+  _setFill(level) {
+    this._buttonFill.style.width = level == null ? "0" : `${Math.round(level * 100)}%`;
+  }
+
+  /* -------------------------------------------------- volume inside the button */
+
+  /** In the minimal layout the button is also the volume control: hold it and
+   *  slide sideways. The change is relative to where the press landed, so simply
+   *  holding the button to talk never moves the volume. */
+  _beginVolumeDrag(event) {
+    this._volumeDrag = null;
+    if (!this._minimal || !this._volumeEnabled()) return;
+
+    const targets = this._volumeTargets();
+    if (!targets.length) return;
+
+    this._volumeDrag = {
+      originX: event.clientX,
+      width: this._button.getBoundingClientRect().width || 1,
+      start: this._averageVolume(targets) ?? 0.5,
+      level: null,
+      targets,
+      sentAt: 0,
+    };
+  }
+
+  _onVolumeDrag(event) {
+    const drag = this._volumeDrag;
+    if (!drag) return;
+
+    const moved = event.clientX - drag.originX;
+    // A press wanders by a few pixels; ignore that so talking is not a volume
+    // change. Traversing the whole button width covers the full range.
+    if (drag.level == null && Math.abs(moved) < VOLUME_DEADZONE) return;
+
+    const level = Math.min(1, Math.max(0, drag.start + moved / drag.width));
+    drag.level = level;
+
+    this._button.dataset.adjusting = "true";
+    this._setFill(level);
+    this._buttonText.textContent = `${this._buttonLabel()} · ${Math.round(level * 100)}%`;
+
+    // Throttled: a pointermove per frame would flood the service.
+    const now = performance.now();
+    if (now - drag.sentAt >= VOLUME_THROTTLE_MS) {
+      drag.sentAt = now;
+      this._setVolume(drag.targets, level);
+    }
+  }
+
+  _endVolumeDrag() {
+    const drag = this._volumeDrag;
+    this._volumeDrag = null;
+    this._button.dataset.adjusting = "false";
+    // Send the final position: the last throttled call may have been skipped.
+    if (drag?.level != null) this._setVolume(drag.targets, drag.level);
+  }
+
   _status(message, isError = false) {
     this._statusEl.textContent = message;
     this._statusEl.dataset.error = String(isError);
@@ -612,7 +707,7 @@ class VoiceBroadcastCard extends HTMLElement {
     muted.connect(this._context.destination);
 
     this._button.dataset.recording = "true";
-    this._button.textContent = "Release to send";
+    this._buttonText.textContent = this._buttonLabel();
     this._status("Recording…");
   }
 
@@ -621,7 +716,7 @@ class VoiceBroadcastCard extends HTMLElement {
     if (!this._recording) return;
     this._recording = false;
     this._button.dataset.recording = "false";
-    this._button.textContent = "Hold to talk";
+    this._buttonText.textContent = this._buttonLabel();
 
     const inputRate = this._context.sampleRate;
     const chunks = this._chunks;
@@ -713,6 +808,8 @@ function buildSchema(config) {
     field("title", { text: {} }),
     field("entities", { entity: { domain: "media_player", multiple: true } }),
     { name: "names", selector: { object: {} } },
+    field("label", { text: {} }),
+    field("recording_label", { text: {} }),
     {
       name: "layout",
       selector: {

@@ -52,7 +52,7 @@ applies to both.
 | Type | Layout |
 | --- | --- |
 | `custom:voice-broadcast-card` | A row per speaker with its name and volume, then the talk button. |
-| `custom:voice-broadcast-mini-card` | One line: talk button plus a single volume slider for all speakers. |
+| `custom:voice-broadcast-mini-card` | Just the talk button. Volume is [built into the button](#volume-inside-the-button) — hold and slide sideways. |
 
 **Which speakers can be reached is fixed in the card configuration.** Pressing the button always broadcasts to
 every entity in `entities` — there is no runtime picker. Give people a second card if they need a second set of
@@ -65,6 +65,8 @@ speakers.
 | `entities` | *required* | yes | The `media_player` entities this card broadcasts to. |
 | `title` | – | yes | Card header. |
 | `names` | – | yes, per entry | Custom label per speaker, keyed by entity id. |
+| `label` | `Hold to talk` | yes | Text on the button. |
+| `recording_label` | `Release to send` | yes | Text on the button while recording. |
 | `layout` | `full` | no | `full` or `minimal`. Changes the DOM, so it is not templatable. |
 | `chime` | `true` | yes | Play a short two-tone chime before your voice so people look up. |
 | `volume_control` | `true` | yes | Show volume control. |
@@ -87,6 +89,17 @@ type: custom:voice-broadcast-mini-card
 entities: [media_player.kitchen]
 ```
 
+### Volume inside the button
+
+The minimal layout has no slider. Instead the button *is* the volume control:
+
+- **Hold and slide sideways** while talking. Right raises, left lowers.
+- The change is **relative to where you pressed**, so simply holding the button to talk never moves the
+  volume. It only starts adjusting once you have moved about 10 px.
+- Sliding the full width of the button covers the full range, and the level shows as a fill behind the label
+  along with a percentage while you adjust.
+- It applies to every configured speaker that supports volume, and does nothing when `volume_control: false`.
+
 ### Templates
 
 Any option marked *Template?* above may be given as a Jinja template instead of a literal. A value containing
@@ -95,6 +108,9 @@ Any option marked *Template?* above may be given as a Jinja template instead of 
 ```yaml
 # Quiet hours: no chime late at night
 chime: "{{ now().hour >= 7 and now().hour < 22 }}"
+
+# Button text that says who is listening
+label: "Talk to {{ states('sensor.people_home') }} people"
 
 # Skip the bedroom while someone is asleep in there
 entities: >

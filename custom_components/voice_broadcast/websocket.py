@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -35,6 +36,8 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .clips import ClipStore
 from .const import CLIP_TTL, CLIP_URL_BASE, DOMAIN, MAX_CLIP_BYTES
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @callback
@@ -115,6 +118,10 @@ async def handle_broadcast(
         )
         return
 
+    # Logged because "the speaker went idle" almost always means it could not
+    # fetch this URL. Fetching it by hand is the fastest way to tell.
+    _LOGGER.debug("Broadcasting %d bytes to %s from %s", len(audio), entity_ids, url)
+
     context = Context(user_id=user.id)
     results = await asyncio.gather(
         *(_async_play(hass, entity_id, url, context) for entity_id in entity_ids)
@@ -133,7 +140,7 @@ def _clip_url(hass: HomeAssistant, clip_id: str) -> str:
     URL can never outlive the audio it points at.
     """
     signed = async_sign_path(
-        hass, f"{CLIP_URL_BASE}/{clip_id}", CLIP_TTL, use_content_user=True
+        hass, f"{CLIP_URL_BASE}/{clip_id}.wav", CLIP_TTL, use_content_user=True
     )
     return f"{get_url(hass)}{signed}"
 

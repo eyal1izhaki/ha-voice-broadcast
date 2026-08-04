@@ -7,7 +7,7 @@ from collections import OrderedDict
 from datetime import datetime
 from http import HTTPStatus
 
-from aiohttp import web
+from aiohttp import hdrs, web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.util import dt as dt_util
 
@@ -70,7 +70,10 @@ class ClipView(HomeAssistantView):
     against another.
     """
 
-    url = f"{CLIP_URL_BASE}/{{clip_id}}"
+    # The .wav suffix matters: speakers routinely decide how to decode a stream
+    # from the URL rather than the Content-Type header. Home Assistant's own TTS
+    # proxy does the same thing, serving `<random token>.mp3`.
+    url = f"{CLIP_URL_BASE}/{{clip_id}}.wav"
     name = "api:voice_broadcast:clip"
 
     def __init__(self, store: ClipStore) -> None:
@@ -79,6 +82,47 @@ class ClipView(HomeAssistantView):
 
     async def get(self, request: web.Request, clip_id: str) -> web.Response:
         """Return the audio for a clip."""
+        return self._respond(request, clip_id)
+
+    # Several speakers probe with HEAD before streaming. aiohttp drops the body
+    # for HEAD by itself while keeping the headers, so one implementation serves
+    # both methods.
+    head = get
+
+    def _respond(self, request: web.Request, clip_id: str) -> web.Response:
+        """Serve the clip, honouring a Range request if one was made."""
         if (audio := self._store.get(clip_id)) is None:
             return web.Response(status=HTTPStatus.NOT_FOUND)
-        return web.Response(body=audio, content_type="audio/wav")
+
+        total = len(audio)
+        unsatisfiable = web.Response(
+            status=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+            headers={hdrs.CONTENT_RANGE: f"bytes */{total}"},
+        )
+
+        try:
+            requested = request.http_range
+        except ValueError:
+            return unsatisfiable
+
+        status = HTTPStatus.OK
+        start, stop = 0, total
+        # Speakers that ask for a byte range will refuse to play audio from a
+        # server that answers 200 with the whole file instead of 206.
+        if requested.start is not None or requested.stop is not None:
+            start = requested.start or 0
+            stop = min(total if requested.stop is None else requested.stop, total)
+            if start >= stop:
+                return unsatisfiable
+            status = HTTPStatus.PARTIAL_CONTENT
+
+        headers = {hdrs.ACCEPT_RANGES: "bytes"}
+        if status is HTTPStatus.PARTIAL_CONTENT:
+            headers[hdrs.CONTENT_RANGE] = f"bytes {start}-{stop - 1}/{total}"
+
+        return web.Response(
+            body=audio[start:stop],
+            status=status,
+            headers=headers,
+            content_type="audio/wav",
+        )

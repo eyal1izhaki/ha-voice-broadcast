@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from urllib.parse import urlparse
 
 import pytest
 from homeassistant.components.media_player import (
@@ -72,10 +73,14 @@ async def test_announce_only_where_supported(
     assert by_entity[ANNOUNCE_PLAYER][ATTR_MEDIA_ANNOUNCE] is True
     assert ATTR_MEDIA_ANNOUNCE not in by_entity[BASIC_PLAYER]
 
-    # Both speakers are handed the same signed, absolute URL.
+    # Both speakers are handed the same signed, absolute URL, and it ends in
+    # .wav before the query string because speakers sniff the format from the
+    # path rather than the Content-Type header.
     urls = {data[ATTR_MEDIA_CONTENT_ID] for data in by_entity.values()}
     assert len(urls) == 1
-    assert urls.pop().startswith("http://10.0.0.5:8123/api/voice_broadcast/clip/")
+    url = urls.pop()
+    assert url.startswith("http://10.0.0.5:8123/api/voice_broadcast/clip/")
+    assert urlparse(url).path.endswith(".wav")
 
 
 async def test_entity_permission_is_enforced(

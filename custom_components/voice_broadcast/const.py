@@ -17,7 +17,14 @@ MAX_CLIPS = 5
 # third. The card enforces a matching duration cap before it ever sends.
 MAX_CLIP_BYTES = 2 * 1024 * 1024
 
-CONF_BASE_URL = "base_url"
+# Which of Home Assistant's own configured URLs speakers should be given. The
+# addresses themselves live in Settings > System > Network; this only chooses
+# between them, because get_url() prefers the internal one by default and that
+# is often the address speakers cannot reach.
+CONF_URL_SOURCE = "url_source"
+URL_SOURCE_AUTO = "auto"
+URL_SOURCE_EXTERNAL = "external"
+URL_SOURCE_INTERNAL = "internal"
 
 CLIP_URL_BASE = "/api/voice_broadcast/clip"
 CARD_URL = "/voice_broadcast/voice-broadcast-card.js"

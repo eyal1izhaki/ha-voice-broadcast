@@ -14,17 +14,20 @@
     "step": {
       "init": {
         "title": "Voice Broadcast",
-        "description": "Speakers fetch recordings over HTTP. By default they are given the Home Assistant address from Settings → System → Network.\n\nIf your speakers cannot reach that address — common when Home Assistant sits behind a reverse proxy — enter the address they should use instead. Leave empty to keep the default.",
+        "description": "Speakers fetch recordings over HTTP, so they need an address they can reach themselves. The addresses come from Settings → System → Network; this only chooses which one to hand out.\n\nChange this if your speakers cannot reach the internal address, which is common when Home Assistant sits behind a reverse proxy.",
         "data": {
-          "base_url": "Address speakers should use"
-        },
-        "data_description": {
-          "base_url": "For example https://home.example.com, with no trailing path. Must be reachable from the speakers themselves."
+          "url_source": "Address to give speakers"
         }
       }
-    },
-    "error": {
-      "invalid_url": "Must start with http:// or https://"
+    }
+  },
+  "selector": {
+    "url_source": {
+      "options": {
+        "auto": "Automatic — let Home Assistant decide (default)",
+        "external": "External URL only",
+        "internal": "Internal URL only"
+      }
     }
   }
 }

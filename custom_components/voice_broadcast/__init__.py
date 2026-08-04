@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
 from . import websocket
 from .clips import ClipStore, ClipView
@@ -38,22 +39,31 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             StaticPathConfig(
                 CARD_URL,
                 str(Path(__file__).parent / "frontend" / CARD_FILENAME),
-                # Not cached, so upgrading the integration takes effect without
-                # users having to hard-reload. The card is a few kilobytes.
-                cache_headers=False,
+                # Cached deliberately. The card is injected as a module on every
+                # page load, and Home Assistant only waits a short moment for the
+                # custom element to be defined before showing a configuration
+                # error. Re-downloading it each time loses that race on a slow
+                # connection, so the version query below busts the cache instead.
+                cache_headers=True,
             )
         ]
     )
     return True
 
 
+async def _async_card_url(hass: HomeAssistant) -> str:
+    """Return the card URL, versioned so an upgrade invalidates the cache."""
+    integration = await async_get_integration(hass, DOMAIN)
+    return f"{CARD_URL}?v={integration.version}"
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Make the dashboard card available to the frontend."""
-    add_extra_js_url(hass, CARD_URL)
+    add_extra_js_url(hass, await _async_card_url(hass))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Stop serving the dashboard card."""
-    remove_extra_js_url(hass, CARD_URL)
+    remove_extra_js_url(hass, await _async_card_url(hass))
     return True

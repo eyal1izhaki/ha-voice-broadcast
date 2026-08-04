@@ -11,7 +11,7 @@
 
 // Keep in step with the version in manifest.json. Logged on load so you can
 // confirm which build the browser is actually running.
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.4.0";
 
 const SAMPLE_RATE = 16000; // Voice-grade mono: small payloads, plays everywhere.
 const VOLUME_SET = 4; // MediaPlayerEntityFeature.VOLUME_SET
@@ -772,12 +772,20 @@ console.info(
   "color: #03a9f4; background: white; font-weight: 700;"
 );
 
-customElements.define("voice-broadcast-card", VoiceBroadcastCard);
-customElements.define("voice-broadcast-mini-card", VoiceBroadcastMiniCard);
-customElements.define("voice-broadcast-card-editor", VoiceBroadcastCardEditor);
+/** If this module is ever loaded twice — a leftover manual Lovelace resource
+ *  alongside the one the integration registers — a duplicate define() throws and
+ *  aborts the rest of this file, leaving the later elements undefined and the
+ *  dashboard showing a configuration error. Registering idempotently avoids it. */
+function define(tag, constructor) {
+  if (!customElements.get(tag)) customElements.define(tag, constructor);
+}
+
+define("voice-broadcast-card", VoiceBroadcastCard);
+define("voice-broadcast-mini-card", VoiceBroadcastMiniCard);
+define("voice-broadcast-card-editor", VoiceBroadcastCardEditor);
 
 window.customCards = window.customCards ?? [];
-window.customCards.push(
+for (const card of [
   {
     type: "voice-broadcast-card",
     name: "Voice Broadcast",
@@ -789,5 +797,9 @@ window.customCards.push(
     name: "Voice Broadcast (minimal)",
     description: "Compact push-to-talk button with a single volume slider.",
     documentationURL: "https://github.com/eyal1izhaki/ha-voice-broadcast",
+  },
+]) {
+  if (!window.customCards.some((entry) => entry.type === card.type)) {
+    window.customCards.push(card);
   }
-);
+}

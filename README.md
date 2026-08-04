@@ -164,9 +164,18 @@ To diagnose:
        custom_components.voice_broadcast: debug
    ```
 
-To fix, either correct the Internal URL in Settings → System → Network, or override it just for speakers in
-**Settings → Devices & Services → Voice Broadcast → Configure**. That option only changes the address; the URL
-is still signed and short-lived.
+To fix, either correct the Internal URL in Settings → System → Network, or tell the integration to hand out a
+different one of your configured addresses in **Settings → Devices & Services → Voice Broadcast → Configure**:
+
+| Choice | Effect |
+| --- | --- |
+| Automatic | `get_url()` decides, preferring the Internal URL. The default. |
+| External URL only | Use the External URL (including a Nabu Casa address). |
+| Internal URL only | Use the Internal URL and never fall back. |
+
+The addresses themselves stay in Settings → System → Network — this only picks which one speakers are given.
+Both explicit choices are strict rather than falling back, so a wrong pick shows an error instead of quietly
+reproducing the problem.
 
 Other things that stop a speaker playing:
 

@@ -35,7 +35,16 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .clips import ClipStore
-from .const import CLIP_TTL, CLIP_URL_BASE, CONF_BASE_URL, DOMAIN, MAX_CLIP_BYTES
+from .const import (
+    CLIP_TTL,
+    CLIP_URL_BASE,
+    CONF_URL_SOURCE,
+    DOMAIN,
+    MAX_CLIP_BYTES,
+    URL_SOURCE_AUTO,
+    URL_SOURCE_EXTERNAL,
+    URL_SOURCE_INTERNAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -130,18 +139,25 @@ async def handle_broadcast(
     connection.send_result(msg["id"], {"targets": targets})
 
 
+# Home Assistant already knows its own addresses; this only chooses between
+# them. get_url() prefers the internal one, which behind a reverse proxy is
+# frequently the address speakers cannot reach. Both explicit choices are strict
+# rather than falling back, so a wrong pick surfaces as an error instead of
+# silently reproducing the problem.
+_URL_ARGS = {
+    URL_SOURCE_AUTO: {},
+    URL_SOURCE_EXTERNAL: {"allow_internal": False},
+    URL_SOURCE_INTERNAL: {"allow_external": False},
+}
+
+
 @callback
 def _base_url(hass: HomeAssistant) -> str:
-    """Return the address speakers should fetch audio from.
-
-    Home Assistant's own URL is right for most installs, but it is chosen for
-    browsers, not speakers: behind a reverse proxy the Internal URL is often an
-    address the speakers cannot reach. The option is the escape hatch for that.
-    """
+    """Return the address speakers should fetch audio from."""
+    source = URL_SOURCE_AUTO
     for entry in hass.config_entries.async_entries(DOMAIN):
-        if override := entry.options.get(CONF_BASE_URL):
-            return str(override).rstrip("/")
-    return get_url(hass)
+        source = entry.options.get(CONF_URL_SOURCE, URL_SOURCE_AUTO)
+    return get_url(hass, **_URL_ARGS.get(source, {}))
 
 
 @callback

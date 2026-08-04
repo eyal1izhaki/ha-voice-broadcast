@@ -11,7 +11,7 @@
 
 // Keep in step with the version in manifest.json. Logged on load so you can
 // confirm which build the browser is actually running.
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.2.1";
 
 const SAMPLE_RATE = 16000; // Voice-grade mono: small payloads, plays everywhere.
 const VOLUME_SET = 4; // MediaPlayerEntityFeature.VOLUME_SET

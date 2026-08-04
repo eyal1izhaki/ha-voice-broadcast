@@ -1,0 +1,12 @@
+{
+  "domain": "voice_broadcast",
+  "name": "Voice Broadcast",
+  "codeowners": ["@eyal1izhaki"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "media_player", "websocket_api"],
+  "documentation": "https://github.com/eyal1izhaki/ha-voice-broadcast",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/eyal1izhaki/ha-voice-broadcast/issues",
+  "version": "0.1.0"
+}

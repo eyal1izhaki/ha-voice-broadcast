@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Voice Broadcast",
+        "description": "This adds a push-to-talk card to your dashboards. You choose which speakers it can reach when you add the card.\n\nRecording needs a secure connection. Open Home Assistant over HTTPS (Nabu Casa or your own certificate), otherwise your browser will block the microphone."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Voice Broadcast is already set up."
+    }
+  }
+}

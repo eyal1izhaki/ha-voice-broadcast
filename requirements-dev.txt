@@ -1,0 +1,7 @@
+# Brings in Home Assistant itself plus its pytest fixtures.
+pytest-homeassistant-custom-component==0.13.316
+
+# The integration depends on the `frontend` component to register its card, and
+# frontend refuses to start without this package. Pin it to the version the
+# matching Home Assistant release expects.
+home-assistant-frontend==20260128.6

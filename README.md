@@ -5,7 +5,7 @@ Hold a button in your Home Assistant dashboard, speak, and your voice plays on y
 Any Home Assistant user can use it — including non-admin accounts, which is the whole reason this
 integration exists (see [Why an integration at all](#why-an-integration-at-all)).
 
-- One HACS install, one click to add. The card registers itself; there is no Lovelace resource to paste.
+- One HACS install, one click to add. The card registers its own Lovelace resource; there is nothing to paste.
 - Two layouts: a full card with a row per speaker, or a minimal button-and-volume strip.
 - Every option accepts a Home Assistant template and updates live.
 - No ffmpeg, no Docker, no Python audio libraries, no npm. Zero runtime dependencies beyond Home Assistant.

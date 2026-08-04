@@ -1,11 +1,13 @@
 # Voice Broadcast
 
-Hold a button in your Home Assistant dashboard, speak, and your voice plays on the speakers you pick.
+Hold a button in your Home Assistant dashboard, speak, and your voice plays on your speakers.
 
 Any Home Assistant user can use it — including non-admin accounts, which is the whole reason this
 integration exists (see [Why an integration at all](#why-an-integration-at-all)).
 
 - One HACS install, one click to add. The card registers itself; there is no Lovelace resource to paste.
+- Two layouts: a full card with a row per speaker, or a minimal button-and-volume strip.
+- Every option accepts a Home Assistant template and updates live.
 - No ffmpeg, no Docker, no Python audio libraries, no npm. Zero runtime dependencies beyond Home Assistant.
 - Speakers that support announcements duck and restore your music by themselves.
 - Recordings are never written to disk.
@@ -42,16 +44,31 @@ This is a browser rule, not something this integration can work around.
 
 Everyone who can see that dashboard can now broadcast to those speakers.
 
-## Card options
+## Cards
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `entities` | *required* | The `media_player` entities this card is allowed to reach. Whoever presses the button chooses which of them to talk to. |
-| `title` | – | Card header. |
-| `names` | – | Custom label per speaker, keyed by entity id. Values may be [templates](#speaker-labels). |
-| `chime` | `true` | Play a short two-tone chime before your voice so people look up. |
-| `volume_control` | `true` | Show a volume slider for each selected speaker. |
-| `max_seconds` | `30` | Recording stops automatically at this length. |
+Two card types are registered. They are the same card with a different default layout, so every option below
+applies to both.
+
+| Type | Layout |
+| --- | --- |
+| `custom:voice-broadcast-card` | A row per speaker with its name and volume, then the talk button. |
+| `custom:voice-broadcast-mini-card` | One line: talk button plus a single volume slider for all speakers. |
+
+**Which speakers can be reached is fixed in the card configuration.** Pressing the button always broadcasts to
+every entity in `entities` — there is no runtime picker. Give people a second card if they need a second set of
+speakers.
+
+### Options
+
+| Option | Default | Template? | Description |
+| --- | --- | --- | --- |
+| `entities` | *required* | yes | The `media_player` entities this card broadcasts to. |
+| `title` | – | yes | Card header. |
+| `names` | – | yes, per entry | Custom label per speaker, keyed by entity id. |
+| `layout` | `full` | no | `full` or `minimal`. Changes the DOM, so it is not templatable. |
+| `chime` | `true` | yes | Play a short two-tone chime before your voice so people look up. |
+| `volume_control` | `true` | yes | Show volume control. |
+| `max_seconds` | `30` | yes | Recording stops automatically at this length. |
 
 ```yaml
 type: custom:voice-broadcast-card
@@ -62,25 +79,47 @@ entities:
 names:
   media_player.kitchen: Kitchen
   media_player.living_room: "Lounge — {{ states('sensor.lounge_temperature') }}°"
-chime: true
+chime: "{{ now().hour < 22 }}"
 ```
 
-### Speaker labels
+```yaml
+type: custom:voice-broadcast-mini-card
+entities: [media_player.kitchen]
+```
 
-By default each speaker shows its own friendly name. `names` overrides that, and a value containing `{{` or
-`{%` is rendered as a Home Assistant template that updates live:
+### Templates
+
+Any option marked *Template?* above may be given as a Jinja template instead of a literal. A value containing
+`{{` or `{%` is subscribed to Home Assistant's template renderer and updates live:
 
 ```yaml
+# Quiet hours: no chime late at night
+chime: "{{ now().hour >= 7 and now().hour < 22 }}"
+
+# Skip the bedroom while someone is asleep in there
+entities: >
+  {{ ['media_player.kitchen'] if is_state('binary_sensor.bedroom_occupied', 'on')
+     else ['media_player.kitchen', 'media_player.bedroom'] }}
+
+# Label that reacts to state
 names:
   media_player.bedroom: "Bedroom{{ ' (asleep)' if is_state('binary_sensor.bedroom_occupied','on') else '' }}"
 ```
 
-Plain labels are used as-is with no template subscription, so there is no cost to using `names` for simple
-renaming. If a template fails or has not rendered yet, the speaker falls back to its friendly name rather than
-showing raw Jinja or going blank.
+Notes:
 
-Labels are keyed by entity id rather than nested inside `entities` so that the visual card editor cannot
-silently drop them when you change the speaker list.
+- Plain values are used as-is with **no** template subscription, so templating costs nothing when unused.
+- A template that fails or has not rendered yet falls back to the literal value — or, for `names`, to the
+  entity's own friendly name — rather than showing raw Jinja or going blank.
+- Booleans accept real booleans as well as `true/false`, `on/off`, `yes/no`, `1/0`.
+- An `entities` template may render a list or a comma-separated string. Anything that is not a
+  `media_player` entity is dropped.
+- Templated `entities` do not weaken anything: the integration still checks the pressing user's own `control`
+  permission for every entity it is asked to play on.
+- In the visual editor, an option holding a template is shown as a text field instead of its usual picker, so
+  the picker cannot overwrite your template.
+- `names` is keyed by entity id rather than nested inside `entities` so the editor cannot silently drop labels
+  when you change the speaker list.
 
 ## How it works
 

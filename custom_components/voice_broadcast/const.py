@@ -17,5 +17,7 @@ MAX_CLIPS = 5
 # third. The card enforces a matching duration cap before it ever sends.
 MAX_CLIP_BYTES = 2 * 1024 * 1024
 
+CONF_BASE_URL = "base_url"
+
 CLIP_URL_BASE = "/api/voice_broadcast/clip"
 CARD_URL = "/voice_broadcast/voice-broadcast-card.js"

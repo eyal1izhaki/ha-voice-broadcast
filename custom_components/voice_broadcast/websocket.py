@@ -35,7 +35,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .clips import ClipStore
-from .const import CLIP_TTL, CLIP_URL_BASE, DOMAIN, MAX_CLIP_BYTES
+from .const import CLIP_TTL, CLIP_URL_BASE, CONF_BASE_URL, DOMAIN, MAX_CLIP_BYTES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -131,6 +131,20 @@ async def handle_broadcast(
 
 
 @callback
+def _base_url(hass: HomeAssistant) -> str:
+    """Return the address speakers should fetch audio from.
+
+    Home Assistant's own URL is right for most installs, but it is chosen for
+    browsers, not speakers: behind a reverse proxy the Internal URL is often an
+    address the speakers cannot reach. The option is the escape hatch for that.
+    """
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if override := entry.options.get(CONF_BASE_URL):
+            return str(override).rstrip("/")
+    return get_url(hass)
+
+
+@callback
 def _clip_url(hass: HomeAssistant, clip_id: str) -> str:
     """Build an absolute, signed, short-lived URL for a clip.
 
@@ -142,7 +156,7 @@ def _clip_url(hass: HomeAssistant, clip_id: str) -> str:
     signed = async_sign_path(
         hass, f"{CLIP_URL_BASE}/{clip_id}.wav", CLIP_TTL, use_content_user=True
     )
-    return f"{get_url(hass)}{signed}"
+    return f"{_base_url(hass)}{signed}"
 
 
 async def _async_play(

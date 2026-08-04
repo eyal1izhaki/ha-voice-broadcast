@@ -137,6 +137,47 @@ Players *without* announce support are simply interrupted; the clip plays and no
 prior playback means guessing clip durations and snapshotting state, which is where the complexity in
 comparable projects lives, so it is deliberately left out.
 
+## Troubleshooting: the speaker goes idle and nothing plays
+
+Almost always this means the speaker could not fetch the clip. **The speaker has to reach Home Assistant over
+the network by itself** — your browser being able to reach it is not enough.
+
+By default speakers are given the address from **Settings → System → Network**, preferring the Internal URL.
+Behind a reverse proxy that address is often wrong: Home Assistant may only listen on `localhost`, so the
+`http://<lan-ip>:8123` it advertises is not actually served.
+
+A Chromecast reports this in the Home Assistant log as:
+
+```
+Failed to cast media http://<your-ha-address>:8123/api/voice_broadcast/clip/….wav … from internal_url (…)
+```
+
+To diagnose:
+
+1. **Call `tts.speak` to the same speaker.** Text-to-speech resolves its URL exactly the same way, so if TTS
+   also fails the problem is the address, not this integration.
+2. **Enable debug logging** to see the URL that was handed out, then fetch it yourself:
+
+   ```yaml
+   logger:
+     logs:
+       custom_components.voice_broadcast: debug
+   ```
+
+To fix, either correct the Internal URL in Settings → System → Network, or override it just for speakers in
+**Settings → Devices & Services → Voice Broadcast → Configure**. That option only changes the address; the URL
+is still signed and short-lived.
+
+Other things that stop a speaker playing:
+
+- **A certificate the speaker does not trust.** Chromecasts reject self-signed and private-CA certificates.
+- **The speaker on a different VLAN or guest network** from Home Assistant, so it cannot route to it at all.
+- **DNS.** The hostname has to resolve from the *speaker's* DNS, which split-horizon setups often break.
+
+Note that the card cannot detect this: `media_player.play_media` returns successfully and the speaker fails
+afterwards, asynchronously. Cast does not expose its idle reason as an entity attribute, so the failure only
+appears in the Home Assistant log — the card will say it is playing.
+
 ## Why an integration at all
 
 Home Assistant has no native way to broadcast recorded audio. `tts.speak` synthesizes text, Assist's
